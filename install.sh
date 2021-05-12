@@ -12,6 +12,7 @@ tmpMirror=''
 ipAddr=''
 ipMask=''
 ipGate=''
+useDHCP=0
 Release='debian'
 setIPv6='0'
 setInterfaceName='0'
@@ -60,6 +61,10 @@ while [[ $# -ge 1 ]]; do
             interface="$1"
             shift
             ;;
+        --dhcp)
+            useDHCP=1
+            shift
+            ;;
         --ip-addr)
             shift
             ipAddr="$1"
@@ -102,6 +107,7 @@ while [[ $# -ge 1 ]]; do
             echo -e "        -b/--biosdevname"
             echo -e "        -6/--ipv6"
             echo -e "        -i/--interface [value]"
+            echo -e "        --dhcp"
             echo -e "        --ip-addr [value]"
             echo -e "        --ip-gate [value]"
             echo -e "        --ip-mask [value]"
@@ -348,7 +354,7 @@ fi
 saved_entry=""
 GRUBNEW='/tmp/grub.new'
 if [ "$GRUBVER" -eq 0 ]; then
-    if [ "$(grep -Pc 'menuentry\ .*?}' $GRUBDIR/$GRUBFILE)" -ne 0 ]; then
+    if [ "$(grep -Pc 'menuentry\ .*?{' $GRUBDIR/$GRUBFILE)" -ne 0 ]; then
         # get menuentry
         cat $GRUBDIR/$GRUBFILE | sed -n ':a;N;$!ba;s/\n/%%%%%/g;$p' | grep -Po 'menuentry\ .*?}%%%%%' | head -1 | sed 's/%%%%%/\n/g' >$GRUBNEW
         if [ ! -f $GRUBNEW ]; then
@@ -532,6 +538,16 @@ if [ "$Release" == 'debian' ]; then
     sed -i 's/umount\ \/media;\ //g' /tmp/boot/preseed.cfg
     sed -i '/pkgsel\/update-policy/d' /tmp/boot/preseed.cfg
     sed -i '/user-setup\/encrypt-home/d' /tmp/boot/preseed.cfg
+fi
+
+if [ "$useDHCP" -eq 1 ]; then
+    sed -i '/netcfg\/disable_autoconfig/d' /tmp/boot/preseed.cfg
+    sed -i '/netcfg\/dhcp_options/d' /tmp/boot/preseed.cfg
+    sed -i '/netcfg\/get_ipaddress.*/d' /tmp/boot/preseed.cfg
+    sed -i '/netcfg\/get_netmask.*/d' /tmp/boot/preseed.cfg
+    sed -i '/netcfg\/get_gateway.*/d' /tmp/boot/preseed.cfg
+    sed -i '/netcfg\/get_nameservers.*/d' /tmp/boot/preseed.cfg
+    sed -i '/netcfg\/confirm_static/d' /tmp/boot/preseed.cfg
 fi
 
 if [[ "$Release" == 'debian' ]] && [[ -f '/boot/firmware.cpio.gz' ]]; then

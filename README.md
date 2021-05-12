@@ -43,6 +43,7 @@ Usage:
         -b/--biosdevname
         -6/--ipv6
         -i/--interface [value]
+        --dhcp
         --ip-addr [value]
         --ip-gate [value]
         --ip-mask [value]
