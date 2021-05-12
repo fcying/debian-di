@@ -154,12 +154,21 @@ function CheckDependenceLib(){
 
 Release=$(echo "$Release" |sed 's/\ //g' |sed -r 's/(.*)/\L\1/')
 
+currentRelease=$(cat /proc/version)
+if [ $(echo $currentRelease | grep -ic "debian") -ne 0 ]; then
+    currentRelease="debian"
+elif [ $(echo $currentRelease | grep -c "centos") -ne 0 ]; then
+    currentRelease="centos"
+else
+    currentRelease="other"
+fi
+
 echo -e "${CYAN}# Check Dependence${NC}"
 if [[ "$Release" == 'debian' ]] || [[ "$Release" == 'ubuntu' ]]; then
     CheckDependenceBin wget,awk,grep,sed,cut,cat,cpio,gzip,find,dirname,basename
 
     # for grep -P
-    if [ $(uname -a | grep -c "Debian") -ne 0 ]; then
+    if [ "$currentRelease" == "debian" ]; then
         CheckDependenceLib libpcre.so.3
     fi
 fi
@@ -259,7 +268,7 @@ if [ $FindDist -eq 0 ]; then
     echo -e "${RED}Error${NC}: The dist version not found, Please check it!"
     exit 1;
 fi
-echo -e Install ${CYAN}$Release-$DIST-$VER${NC}, use mirror: ${CYAN}$LinuxMirror${NC}
+echo -e Install ${CYAN}$Release-$DIST-$VER${NC}, use mirror: ${CYAN}$LinuxMirror${NC}, current os: $currentRelease
 
 
 # password {{{
@@ -295,7 +304,7 @@ else
     fi
 fi
 
-echo -e IPv4: $IPv4, MASK: $MASK, GATE: $GATE
+echo -e IPv4: $IPv4, NETMASK: $MASK, GATEWAY: $GATE
 if [ -z "$GATE" ] || [ -z "$MASK" ] || [ -z "$IPv4" ]; then
     echo -e "${RED}Error${NC}: Not configure network."
     exit 1
@@ -303,16 +312,19 @@ fi
 
 
 # download boot file {{{
+TEST=${TEST:-"0"}
 if [[ "$Release" == "debian" ]] || [[ "$Release" == "ubuntu" ]]; then
     echo -e "download ${CYAN}initrd.gz vmlinuz${NC} from ${CYAN}$netbootURL${NC}"
-    wget --no-check-certificate -qO "/boot/vmlinuz" $netbootURL/linux
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Error${NC}: Download 'vmlinuz' failed!" && exit 1
-    fi
+    if [ "$TEST" == "0" ]; then
+        wget --no-check-certificate -qO "/boot/vmlinuz" $netbootURL/linux
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}Error${NC}: Download 'vmlinuz' failed!" && exit 1
+        fi
 
-    wget --no-check-certificate -qO "/boot/initrd.img" $netbootURL/initrd.gz
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Error${NC}: Download 'initrd.img' failed!" && exit 1
+        wget --no-check-certificate -qO "/boot/initrd.img" $netbootURL/initrd.gz
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}Error${NC}: Download 'initrd.img' failed!" && exit 1
+        fi
     fi
 else
     echo -e "${RED}Error${NC}: Invalid version $Release."
@@ -321,6 +333,7 @@ fi
 
 
 # modify grub {{{
+echo -e "${CYAN}set new grub${NC}"
 if [ -f "/boot/grub/grub.cfg" ]; then
     GRUBVER=0 && GRUBDIR='/boot/grub' && GRUBFILE='grub.cfg'
 elif [ -f "/boot/grub2/grub.cfg" ]; then
@@ -328,27 +341,45 @@ elif [ -f "/boot/grub2/grub.cfg" ]; then
 elif [ -f "/boot/grub/grub.conf" ]; then
     GRUBVER=1 && GRUBDIR='/boot/grub' && GRUBFILE='grub.conf'
 else
-    echo -e "${RED}Error${NC}: grub not found." && exit 1
+    echo -e "${RED}Error${NC}: grub not found."
+    exit 1
 fi
 
+saved_entry=""
 GRUBNEW='/tmp/grub.new'
 if [ "$GRUBVER" -eq 0 ]; then
-    # get menuentry
-    cat $GRUBDIR/$GRUBFILE | sed -n ':a;N;$!ba;s/\n/%%%%%/g;$p' | grep -Po 'menuentry\ .*?}%%%%%' | head -1 | sed 's/%%%%%/\n/g' >$GRUBNEW
-    if [ ! -f $GRUBNEW ]; then
-        echo -e "${RED}Error${NC}: $GRUBFILE have not menuentry."
-        exit 1
+    if [ "$(grep -Pc 'menuentry\ .*?}' $GRUBDIR/$GRUBFILE)" -ne 0 ]; then
+        # get menuentry
+        cat $GRUBDIR/$GRUBFILE | sed -n ':a;N;$!ba;s/\n/%%%%%/g;$p' | grep -Po 'menuentry\ .*?}%%%%%' | head -1 | sed 's/%%%%%/\n/g' >$GRUBNEW
+        if [ ! -f $GRUBNEW ]; then
+            echo -e "${RED}Error${NC}: $GRUBFILE have not menuentry."
+            exit 1
+        fi
+        sed -i "s/menuentry.*/menuentry 'Install OS [$DIST $VER]' --class debian --class gnu-linux --class gnu --class os {/g" $GRUBNEW
+        sed -i "/echo.*Loading/d" $GRUBNEW
+        INSERTGRUB="$(awk '/menuentry /{print NR}' $GRUBDIR/$GRUBFILE | head -1)"
+    else
+        # check if use /boot/loader/entries, for centos8
+        saved_entry=$(cat $GRUBDIR/grubenv | grep "saved_entry" | awk -F= '{print $2}')
+        if [ -f "/boot/loader/entries/${saved_entry}.conf" ]; then
+            cat "/boot/loader/entries/${saved_entry}.conf" > $GRUBNEW
+        else
+            echo -e "${RED}Error${NC}: saved_entry ${saved_entry} can't find."
+            exit 1
+        fi
+        sed -i "s/title .*/title Install OS [$DIST $VER]/g" $GRUBNEW
     fi
-    sed -i "s/menuentry.*/menuentry 'Install OS [$DIST $VER]' --class debian --class gnu-linux --class gnu --class os {/g" $GRUBNEW
-    sed -i "/echo.*Loading/d" $GRUBNEW
-    INSERTGRUB="$(awk '/menuentry /{print NR}' $GRUBDIR/$GRUBFILE | head -1)"
 
 elif [ "$GRUBVER" -eq 1 ]; then
+    # for centos 6
     CFG0="$(awk '/title[\ ]|title[\t]/{print NR}' $GRUBDIR/$GRUBFILE|head -n 1)"
     CFG1="$(awk '/title[\ ]|title[\t]/{print NR}' $GRUBDIR/$GRUBFILE|head -n 2 |tail -n 1)"
     [[ -n $CFG0 ]] && [ -z $CFG1 -o $CFG1 == $CFG0 ] && sed -n "$CFG0,$"p $GRUBDIR/$GRUBFILE >$GRUBNEW
     [[ -n $CFG0 ]] && [ -z $CFG1 -o $CFG1 != $CFG0 ] && sed -n "$CFG0,$[$CFG1-1]"p $GRUBDIR/$GRUBFILE >$GRUBNEW
-    [[ ! -f $GRUBNEW ]] && echo "Error! configure append $GRUBFILE. " && exit 1
+    if [ ! -f $GRUBNEW ]; then
+        echo -e "${RED}Error${NC}: $GRUBFILE config failed."
+        exit 1
+    fi
     sed -i "/title.*/c\title\ \'Install OS \[$DIST\ $VER\]\'" $GRUBNEW
     sed -i '/^#/d' $GRUBNEW;
     INSERTGRUB="$(awk '/title[\ ]|title[\t]/{print NR}' $GRUBDIR/$GRUBFILE|head -n 1)"
@@ -356,7 +387,7 @@ fi
 
 LinuxKernel="$(grep 'linux.*/\|kernel.*/' $GRUBNEW |awk '{print $1}')"
 if [ -z "$LinuxKernel" ]; then
-    echo -e "${RED}Error${NC}: $GRUBFILE can't get LinuxKernel."
+    echo -e "${RED}Error${NC}: can't find LinuxKernel."
     exit 1
 fi
 LinuxIMG="$(grep 'initrd.*/' $GRUBNEW |awk '{print $1}')";
@@ -376,17 +407,31 @@ if [[ "$setIPv6" == "0" ]]; then
 fi
 
 if [[ "$Release" == 'debian' ]] || [[ "$Release" == 'ubuntu' ]]; then
-    BOOT_OPTION="auto=true $Add_OPTION hostname=$Release domain= -- quiet"
+    BOOT_OPTION=" auto=true $Add_OPTION -- quiet"
 fi
 
-sed -i "s|$LinuxKernel.*/.*|$LinuxKernel\t\/boot\/vmlinuz $BOOT_OPTION|g" $GRUBNEW
-sed -i "s|$LinuxIMG.*/.*|$LinuxIMG\t/boot/initrd.img|g" $GRUBNEW
+if [ -n "$(grep 'linux.*/\|kernel.*/' $GRUBNEW | awk '{print $2}' | grep '^/boot/')" ]; then
+    inBoot="/boot"
+else
+    inBoot=""
+fi
 
-sed -i ''${INSERTGRUB}'i\\n' $GRUBDIR/$GRUBFILE
-sed -i ''${INSERTGRUB}'r '$GRUBNEW'' $GRUBDIR/$GRUBFILE
+# add BOOT_OPTION boot failed on centos8
+if [ "$currentRelease" == "centos" ]; then
+    BOOT_OPTION=""
+fi
 
-if [ -f "$GRUBDIR/grubenv" ]; then
-    sed -i 's/saved_entry/#saved_entry/g' $GRUBDIR/grubenv
+sed -i "s|$LinuxKernel.*/.*|$LinuxKernel\t$inBoot/vmlinuz$BOOT_OPTION|g" $GRUBNEW
+sed -i "s|$LinuxIMG.*/.*|$LinuxIMG\t$inBoot/initrd.img|g" $GRUBNEW
+
+if [ -z "$saved_entry" ]; then
+    if [ -f "$GRUBDIR/grubenv" ]; then
+        sed -i 's/saved_entry/#saved_entry/g' $GRUBDIR/grubenv
+    fi
+    sed -i ''${INSERTGRUB}'i\\n' $GRUBDIR/$GRUBFILE
+    sed -i ''${INSERTGRUB}'r '$GRUBNEW'' $GRUBDIR/$GRUBFILE
+else
+    cat $GRUBNEW > /boot/loader/entries/${saved_entry}.conf
 fi
 
 chown root:root $GRUBDIR/$GRUBFILE
@@ -395,7 +440,8 @@ chmod 444 $GRUBDIR/$GRUBFILE
 # modify grub }}}
 
 
-# unpack initrd.gz
+# unpack initrd
+echo -e "${CYAN}unpack initrd${NC}"
 rm -rf /tmp/boot && mkdir /tmp/boot && cd /tmp/boot
 gzip -d < /boot/initrd.img | cpio --extract --verbose --make-directories --no-absolute-filenames >>/dev/null 2>&1
 
@@ -419,6 +465,7 @@ d-i netcfg/get_nameservers string 8.8.8.8
 d-i netcfg/confirm_static boolean true
 
 d-i netcfg/get_hostname string $(hostname)
+d-i netcfg/get_domain string unassigned-domain
 
 d-i hw-detect/load_firmware boolean true
 
@@ -494,10 +541,10 @@ fi
 fi  # preseed.cfg }}}
 
 
-echo -e "${CYAN}create new initrd.img${NC}"
-rm /boot/initrd.img
-find . | cpio -H newc --create | gzip -9 > /boot/initrd.img;
-rm -rf /tmp/boot;
+echo -e "${CYAN}create new initrd${NC}"
+rm -f /boot/initrd.img
+find . | cpio -H newc --create | gzip -9 > /boot/initrd.img
+rm -rf /tmp/boot
 
 
 echo -e "${CYAN}reboot && enter auto install, wait a moment, you can check process with VNC.${NC}"
