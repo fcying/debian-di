@@ -522,6 +522,7 @@ popularity-contest popularity-contest/participate boolean false
 
 d-i grub-installer/only_debian boolean true
 d-i grub-installer/bootdev string default
+d-i grub-installer/force-efi-extra-removable boolean true
 
 d-i preseed/late_command string \
 apt-install wget curl vim; \
@@ -533,11 +534,15 @@ in-target sed -ri 's/^#?PasswordAuthentication.*/PasswordAuthentication yes/g' /
 d-i finish-install/reboot_in_progress note
 EOF
 
-if [ "$Release" == 'debian' ]; then
+if [ "$Release" == "debian" ]; then
     # only for ubuntu
     sed -i 's/umount\ \/media;\ //g' /tmp/boot/preseed.cfg
     sed -i '/pkgsel\/update-policy/d' /tmp/boot/preseed.cfg
     sed -i '/user-setup\/encrypt-home/d' /tmp/boot/preseed.cfg
+fi
+
+if [ ! -d "/boot/efi" ]; then
+    sed -i '/force-efi-extra-removable/d' /tmp/boot/preseed.cfg
 fi
 
 if [ "$useDHCP" -eq 1 ]; then
@@ -550,7 +555,7 @@ if [ "$useDHCP" -eq 1 ]; then
     sed -i '/netcfg\/confirm_static/d' /tmp/boot/preseed.cfg
 fi
 
-if [[ "$Release" == 'debian' ]] && [[ -f '/boot/firmware.cpio.gz' ]]; then
+if [[ "$Release" == "debian" ]] && [[ -f "/boot/firmware.cpio.gz" ]]; then
     gzip -d < /boot/firmware.cpio.gz | cpio --extract --verbose --make-directories --no-absolute-filenames >>/dev/null 2>&1
 fi
 
