@@ -4,10 +4,10 @@ auto install debian for kvm vps with netboot.
 
 #### Sample
 ```
-# use default options: debian10 amd64 password:HelloDebian
+# use default options: debian11 amd64 password:HelloDebian
 wget -qOinstall.sh https://github.com/fcying/debian-autoinstall/raw/master/install.sh && bash install.sh
 
-# install debian10 password:hello123
+# install debian default version with password:hello123
 bash <(wget -qO- https://github.com/fcying/debian-autoinstall/raw/master/install.sh) -p hello123
 
 # install debian9 i386 password:hello123 huaweimirros
@@ -38,7 +38,7 @@ apt-get install -y wget gawk cpio libpcre3 openssl ca-certificates
 ./install.sh --help
 Usage:
     bash install.sh:
-        -d/--debian [8|9|10|value]
+        -d/--debian [9|10|11|value]
         -u/--ubuntu [18.04|20.04|value]
         -v/--ver [32|64]
         -m/--mirror [value]

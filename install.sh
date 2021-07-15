@@ -7,7 +7,7 @@
 
 
 tmpVER=''
-tmpDIST='10'
+tmpDIST='11'
 tmpMirror=''
 ipAddr=''
 ipMask=''
@@ -99,7 +99,7 @@ while [[ $# -ge 1 ]]; do
             fi
             echo -e "Usage:"
             echo -e "    bash $(basename $0):"
-            echo -e "        -d/--debian [8|9|10|value]"
+            echo -e "        -d/--debian [9|10|11|value]"
             echo -e "        -u/--ubuntu [18.04|20.04|value]"
             echo -e "        -v/--ver [32|64]"
             echo -e "        -m/--mirror [value]"
@@ -413,7 +413,7 @@ if [[ "$setIPv6" == "0" ]]; then
 fi
 
 if [[ "$Release" == 'debian' ]] || [[ "$Release" == 'ubuntu' ]]; then
-    BOOT_OPTION=" auto=true $Add_OPTION -- quiet"
+    BOOT_OPTION=" auto=true lowmem/low=true $Add_OPTION -- quiet"
 fi
 
 if [ -n "$(grep 'linux.*/\|kernel.*/' $GRUBNEW | awk '{print $2}' | grep '^/boot/')" ]; then
@@ -456,8 +456,11 @@ gzip -d < /boot/initrd.img | cpio --extract --verbose --make-directories --no-ab
 if [[ "$Release" == 'debian' ]] || [[ "$Release" == 'ubuntu' ]]; then
     cat >/tmp/boot/preseed.cfg<<EOF
 d-i debian-installer/locale string en_US
+d-i debian-installer/language string en
+d-i debian-installer/country string US
+d-i debian-installer/locale select en_US.UTF-8
 
-d-i keyboard-configuration/xkb-keymap select us
+d-i keymap select us
 
 d-i netcfg/choose_interface select $interface
 
@@ -525,7 +528,7 @@ d-i grub-installer/bootdev string default
 d-i grub-installer/force-efi-extra-removable boolean true
 
 d-i preseed/late_command string \
-apt-install wget curl vim; \
+apt-install wget curl vim git debconf-utils locales-all; \
 in-target sed -i '/MaxAuthTries/d' /etc/ssh/sshd_config; \
 in-target bash -c "echo 'MaxAuthTries 10' | tee -a /etc/ssh/sshd_config"; \
 in-target sed -ri 's/^#?PermitRootLogin.*/PermitRootLogin yes/g' /etc/ssh/sshd_config; \
