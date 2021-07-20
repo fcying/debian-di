@@ -7,7 +7,7 @@
 
 
 tmpVER=''
-tmpDIST='11'
+tmpDIST='10'
 tmpMirror=''
 ipAddr=''
 ipMask=''
@@ -314,6 +314,27 @@ echo -e IPv4: $IPv4, NETMASK: $MASK, GATEWAY: $GATE
 if [ -z "$GATE" ] || [ -z "$MASK" ] || [ -z "$IPv4" ]; then
     echo -e "${RED}Error${NC}: Not configure network."
     exit 1
+fi
+
+
+# check memory {{{
+memory=$(free -k | grep Mem | awk '{print $2}')
+echo -e "memory is $memory (free -k)"
+if [ "$DIST" == "buster" ]; then
+    if [ "$memory" -lt 299684 ]; then
+        echo -e "low memory: $memory, need 299684 at least"
+        exit 1
+    fi
+elif [ "$DIST" == "stretch" ]; then
+    if [ "$memory" -lt 170660 ]; then
+        echo -e "low memory: $memory, need 170660 at least"
+        exit 1
+    fi
+elif [ "$DIST" == "bullseye" ]; then
+    if [ "$memory" -lt 461476 ]; then
+        echo -e "low memory: $memory, need 461476 at least"
+        exit 1
+    fi
 fi
 
 
