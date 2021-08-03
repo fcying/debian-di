@@ -47,7 +47,7 @@ Usage:
     bash install.sh:
         -d/--debian [9|10|11|value]
         -u/--ubuntu [18.04|20.04|value]
-        -v/--ver [32|64]
+        -v/--ver [i386|amd64|arm64]
         -m/--mirror [value]
         -p/--password [value]
         -b/--biosdevname

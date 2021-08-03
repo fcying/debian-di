@@ -19,7 +19,9 @@ setInterfaceName='0'
 interface='auto'
 myPASSWORD=''
 netbootURL=''
-
+preInstall='openssh-server wget curl vim git debconf-utils locales-all'
+bpoKernel='true'
+isUEFI='false'
 
 BLACK="\e[0;30m"
 RED="\e[0;31m"
@@ -101,7 +103,7 @@ while [[ $# -ge 1 ]]; do
             echo -e "    bash $(basename $0):"
             echo -e "        -d/--debian [9|10|11|value]"
             echo -e "        -u/--ubuntu [18.04|20.04|value]"
-            echo -e "        -v/--ver [32|64]"
+            echo -e "        -v/--ver [i386|amd64|arm64]"
             echo -e "        -m/--mirror [value]"
             echo -e "        -p/--password [value]"
             echo -e "        -b/--biosdevname"
@@ -163,8 +165,10 @@ Release=$(echo "$Release" |sed 's/\ //g' |sed -r 's/(.*)/\L\1/')
 currentRelease=$(cat /proc/version)
 if [ $(echo $currentRelease | grep -ic "debian") -ne 0 ]; then
     currentRelease="debian"
-elif [ $(echo $currentRelease | grep -c "centos") -ne 0 ]; then
+elif [ $(echo $currentRelease | grep -ic "centos") -ne 0 ]; then
     currentRelease="centos"
+elif [ $(echo $currentRelease | grep -ic "ubuntu") -ne 0 ]; then
+    currentRelease="ubuntu"
 else
     currentRelease="other"
 fi
@@ -215,12 +219,26 @@ function SelectMirror(){
     done
 }
 
-# get linux version {{{
+# get architecture version {{{
 tmpVER="$(echo "$tmpVER" | sed -r 's/(.*)/\L\1/')"  #lowercase
-if  [[ "$tmpVER" == '32' ]] || [[ "$tmpVER" == 'i386' ]] || [[ "$tmpVER" == 'x86' ]]; then
-    VER='i386';
+if  [[ "$tmpVER" == 'i386' ]] || [[ "$tmpVER" == 'amd64' ]] || [[ "$tmpVER" == 'arm64' ]]; then
+    VER=$tmpVER;
 else
-    VER='amd64';
+    VER=$(dpkg --print-architecture 2> /dev/null) || {
+        case $(uname -m) in
+            x86_64)
+                VER=amd64
+                ;;
+            aarch64)
+                VER=arm64
+                ;;
+            i386)
+                VER=i386
+                ;;
+            *)
+                echo "No --architecture specified"
+        esac
+    }
 fi
 
 if [[ -z "$tmpDIST" ]]; then
@@ -229,21 +247,21 @@ if [[ -z "$tmpDIST" ]]; then
 fi
 
 # check dist {{{
-DIST="$(echo "$tmpDIST" | sed -r 's/(.*)/\L\1/')"
+DIST_NUM="$(echo "$tmpDIST" | sed -r 's/(.*)/\L\1/')"
 if [ "$Release" == "debian" ]; then
-    if [ "$DIST" == "10" ]; then
+    if [ "$DIST_NUM" == "10" ]; then
         DIST="buster"
-    elif [ "$DIST" == "8" ]; then
+    elif [ "$DIST_NUM" == "8" ]; then
         DIST="jessie"
-    elif [ "$DIST" == "9" ]; then
+    elif [ "$DIST_NUM" == "9" ]; then
         DIST="stretch"
-    elif [ "$DIST" == "11" ]; then
+    elif [ "$DIST_NUM" == "11" ]; then
         DIST="bullseye"
     fi
 elif [ "$Release" == "ubuntu" ]; then
-    if [ "$DIST" == "18.04" ]; then
+    if [ "$DIST_NUM" == "18.04" ]; then
         DIST="bionic"
-    elif [ "$DIST" == "20.04" ]; then
+    elif [ "$DIST_NUM" == "20.04" ]; then
         DIST="focal"
     fi
 fi
@@ -260,6 +278,25 @@ if [[ -z "$LinuxMirror" ]]; then
     exit 1;
 fi
 
+# check UEFI {{{
+if [ -d "/boot/efi" ]; then
+    isUEFI="true"
+fi
+
+# init kernel version {{{
+kernel="linux-image-$VER"
+if [ "$VER" == amd64 ] || [ "$VER" == arm64 ]; then
+    if [ "$isUEFI" == "false" ]; then
+        kernel="linux-image-cloud-$VER"
+    fi
+fi
+if [ "$DIST_NUM" -ge 9 ]; then
+    preInstall="$kernel/$DIST-backports $preInstall"
+else
+    echo 'backports kernel is only available for debian >= 9, not use it'
+    preInstall="$kernel/$DIST $preInstall"
+fi
+
 # check DIST valid {{{
 FindDist=0
 DistsList=$(wget --no-check-certificate -qO- $LinuxMirror/dists | grep -Po '(?<=href=").*?(?=/")')
@@ -274,8 +311,7 @@ if [ $FindDist -eq 0 ]; then
     echo -e "${RED}Error${NC}: The dist version not found, Please check it!"
     exit 1;
 fi
-echo -e Install ${CYAN}$Release-$DIST-$VER${NC}, use mirror: ${CYAN}$LinuxMirror${NC}, current os: $currentRelease
-
+echo -e Install ${CYAN}$Release-$DIST-$kernel${NC}, mirror: ${CYAN}$LinuxMirror${NC}, current os: $currentRelease
 
 # password {{{
 if [ -z "$myPASSWORD" ]; then
@@ -423,18 +459,17 @@ if [ -z "$LinuxIMG" ]; then
     LinuxIMG='initrd'
 fi
 
+BOOT_OPTION=" auto=true"
 if [[ "$setInterfaceName" == "1" ]]; then
-    Add_OPTION="net.ifnames=0 biosdevname=0"
-else
-    Add_OPTION=""
+    BOOT_OPTION="$BOOT_OPTION net.ifnames=0 biosdevname=0"
 fi
 
 if [[ "$setIPv6" == "0" ]]; then
-    Add_OPTION="$Add_OPTION ipv6.disable=1"
+    BOOT_OPTION="$BOOT_OPTION ipv6.disable=1"
 fi
 
 if [[ "$Release" == 'debian' ]] || [[ "$Release" == 'ubuntu' ]]; then
-    BOOT_OPTION=" auto=true lowmem/low=true $Add_OPTION -- quiet"
+    BOOT_OPTION="$BOOT_OPTION lowmem/low=true -- quiet"
 fi
 
 if [ -n "$(grep 'linux.*/\|kernel.*/' $GRUBNEW | awk '{print $2}' | grep '^/boot/')" ]; then
@@ -503,7 +538,7 @@ d-i mirror/country string manual
 d-i mirror/http/hostname string $MirrorHost
 d-i mirror/http/directory string $MirrorFolder
 d-i mirror/http/proxy string
-d-i apt-setup/services-select multiselect
+d-i apt-setup/services-select multiselect updates, backports
 d-i apt-setup/non-free boolean true
 d-i apt-setup/contrib boolean true
 
@@ -536,8 +571,10 @@ d-i partman/confirm_nooverwrite boolean true
 
 d-i debian-installer/allow_unauthenticated boolean true
 
+d-i base-installer/kernel/image string $kernel
+
 tasksel tasksel/first multiselect minimal
-d-i pkgsel/include string openssh-server
+d-i pkgsel/include string $preInstall
 d-i pkgsel/upgrade select none
 
 d-i pkgsel/update-policy select none
@@ -549,7 +586,6 @@ d-i grub-installer/bootdev string default
 d-i grub-installer/force-efi-extra-removable boolean true
 
 d-i preseed/late_command string \
-apt-install wget curl vim git debconf-utils locales-all; \
 in-target sed -i '/MaxAuthTries/d' /etc/ssh/sshd_config; \
 in-target bash -c "echo 'MaxAuthTries 10' | tee -a /etc/ssh/sshd_config"; \
 in-target sed -ri 's/^#?PermitRootLogin.*/PermitRootLogin yes/g' /etc/ssh/sshd_config; \
@@ -565,7 +601,7 @@ if [ "$Release" == "debian" ]; then
     sed -i '/user-setup\/encrypt-home/d' /tmp/boot/preseed.cfg
 fi
 
-if [ ! -d "/boot/efi" ]; then
+if [ "$isUEFI" == "false" ]; then
     sed -i '/force-efi-extra-removable/d' /tmp/boot/preseed.cfg
 fi
 
