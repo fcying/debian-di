@@ -19,6 +19,8 @@ setInterfaceName='0'
 interface='auto'
 myPASSWORD=''
 netbootURL=''
+LinuxMirror=''
+# debconf-get-selections --installer >> d.log
 preInstall='openssh-server wget curl vim git debconf-utils locales-all'
 bpoKernel='true'
 isUEFI='false'
@@ -212,7 +214,7 @@ function SelectMirror(){
             netbootURL="${mirror}/dists/${DIST}${inUpdate}/main/installer-${VER}/current/${legacyImage}/netboot/${Release}-installer/${VER}"
             wget --no-check-certificate --spider --timeout=3 "$netbootURL/initrd.gz" -o /dev/null
             if [ $? -eq 0 ]; then
-                echo $mirror---$netbootURL
+                LinuxMirror=$mirror
                 return
             fi
         done
@@ -265,9 +267,11 @@ elif [ "$Release" == "ubuntu" ]; then
         DIST="focal"
     fi
 fi
-LinuxMirror=$(SelectMirror "$Release" "$DIST" "$VER" "$tmpMirror")
-netbootURL=$(echo "$LinuxMirror" |awk -F'---' '{print $2}')
-LinuxMirror="$(echo "$LinuxMirror" |awk -F'---' '{print $1}')"
+
+if [ "$tmpMirror" == "china" ]; then
+    tmpMirror="https://opentuna.cn/debian"
+fi
+SelectMirror "$Release" "$DIST" "$VER" "$tmpMirror"
 MirrorHost="$(echo "$LinuxMirror" |awk -F'://|/' '{print $2}')"
 MirrorFolder="$(echo "$LinuxMirror" |awk -F''${MirrorHost}'' '{print $2}')"
 
@@ -276,6 +280,16 @@ if [[ -z "$LinuxMirror" ]]; then
     [ "$Release" == 'debian' ] && echo -e "${YELLOW}example:${NC} http://deb.debian.org/debian";
     [ "$Release" == 'ubuntu' ] && echo -e "${YELLOW}example:${NC} http://archive.ubuntu.com/ubuntu";
     exit 1;
+fi
+
+if [ "$Release" == "debian" ]; then
+    if [ "$LinuxMirror" == "http://deb.debian.org/debian" ]; then
+        security_host="security.debian.org"
+    else
+        security_host=${MirrorHost}
+    fi
+else
+    security_host="security.ubuntu.com"
 fi
 
 # check UEFI {{{
@@ -290,12 +304,7 @@ if [ "$VER" == amd64 ] || [ "$VER" == arm64 ]; then
         kernel="linux-image-cloud-$VER"
     fi
 fi
-if [ "$DIST_NUM" -ge 9 ]; then
-    preInstall="$kernel/$DIST-backports $preInstall"
-else
-    echo 'backports kernel is only available for debian >= 9, not use it'
-    preInstall="$kernel/$DIST $preInstall"
-fi
+preInstall="$kernel/$DIST $preInstall"
 
 # check DIST valid {{{
 FindDist=0
@@ -538,7 +547,10 @@ d-i mirror/country string manual
 d-i mirror/http/hostname string $MirrorHost
 d-i mirror/http/directory string $MirrorFolder
 d-i mirror/http/proxy string
-d-i apt-setup/services-select multiselect updates, backports
+apt-mirror-setup apt-setup/mirror/error select Retry
+
+d-i apt-setup/services-select multiselect security, updates
+d-i apt-setup/security_host string $security_host
 d-i apt-setup/non-free boolean true
 d-i apt-setup/contrib boolean true
 

@@ -13,6 +13,9 @@ bash <(wget -qO- https://github.com/fcying/debian-autoinstall/raw/master/install
 # install debian9 i386 password:hello123 huaweimirros
 bash install.sh -d 9 -v 32 -p hello123 -m http://mirrors.huaweicloud.com/debian
 
+# install debian10 use mirror https://opentuna.cn/debian
+bash install.sh -d 10 -m china
+
 # install debian11 with special network
 bash install.sh -d 11 --ip-addr x.x.x.x --ip-gate x.x.x.x --ip-mask x.x.x.x
 
