@@ -6,7 +6,7 @@
 ## Written By fcying
 
 
-tmpVER=''
+tmpArch=''
 tmpDIST='10'
 tmpMirror=''
 ipAddr=''
@@ -16,13 +16,15 @@ useDHCP=0
 Release='debian'
 setIPv6='0'
 setInterfaceName='0'
-interface='auto'
-myPASSWORD=''
 netbootURL=''
 LinuxMirror=''
-# debconf-get-selections --installer >> d.log
+user='root'
+my_passwd='HelloDebian'
+ssh_port='22'
+
+# debconf-get-selections --installer >> file
+# debconf-get-selections >> file
 preInstall='openssh-server wget curl vim git debconf-utils locales-all'
-bpoKernel='true'
 isUEFI='false'
 
 BLACK="\e[0;30m"
@@ -38,9 +40,9 @@ NC="\e[0m"  # No Color
 
 while [[ $# -ge 1 ]]; do
     case $1 in
-        -v|--ver)
+        -a|--arch)
             shift
-            tmpVER="$1"
+            tmpArch="$1"
             shift
             ;;
         -d|--debian)
@@ -49,20 +51,25 @@ while [[ $# -ge 1 ]]; do
             tmpDIST="$1"
             shift
             ;;
-        -u|--ubuntu)
+        --ubuntu)
             shift
             Release='ubuntu'
             tmpDIST="$1"
             shift
             ;;
-        -p|--password)
+        -u|--user)
             shift
-            myPASSWORD="$1"
+            user="$1"
             shift
             ;;
-        -i|--interface)
+        -p|--password)
             shift
-            interface="$1"
+            my_passwd="$1"
+            shift
+            ;;
+        --port)
+            shift
+            ssh_port="$1"
             shift
             ;;
         --dhcp)
@@ -104,13 +111,14 @@ while [[ $# -ge 1 ]]; do
             echo -e "Usage:"
             echo -e "    bash $(basename $0):"
             echo -e "        -d/--debian [9|10|11|value]"
-            echo -e "        -u/--ubuntu [18.04|20.04|value]"
+            echo -e "        --ubuntu [18.04|20.04|value]"
             echo -e "        -v/--ver [i386|amd64|arm64]"
             echo -e "        -m/--mirror [value]"
+            echo -e "        -u/--user [value]"
             echo -e "        -p/--password [value]"
+            echo -e "        --port [value]"
             echo -e "        -b/--biosdevname"
             echo -e "        -6/--ipv6"
-            echo -e "        -i/--interface [value]"
             echo -e "        --dhcp"
             echo -e "        --ip-addr [value]"
             echo -e "        --ip-gate [value]"
@@ -176,26 +184,23 @@ else
 fi
 
 echo -e "${CYAN}# Check Dependence${NC}"
-if [[ "$Release" == 'debian' ]] || [[ "$Release" == 'ubuntu' ]]; then
-    CheckDependenceBin wget,awk,grep,sed,cut,cat,cpio,gzip,find,dirname,basename
-
-    # for grep -P
-    if [ "$currentRelease" == "debian" ]; then
-        CheckDependenceLib libpcre.so.3
-    fi
+CheckDependenceBin wget,awk,grep,sed,cut,cat,cpio,gzip,find,dirname,basename
+# for grep -P
+if [[ "$currentRelease" == 'debian' ]] || [[ "$currentRelease" == 'ubuntu' ]]; then
+    CheckDependenceLib libpcre.so.3
 fi
 
-[ -n "$myPASSWORD" ] && CheckDependenceBin openssl
+[ -n "$my_passwd" ] && CheckDependenceBin openssl
 
 function SelectMirror(){
     [ $# -ge 3 ] || exit 1
     Release="$1"
     DIST=$(echo "$2" |sed 's/\ //g' |sed -r 's/(.*)/\L\1/')
-    VER=$(echo "$3" |sed 's/\ //g' |sed -r 's/(.*)/\L\1/')
+    arch=$(echo "$3" |sed 's/\ //g' |sed -r 's/(.*)/\L\1/')
     NewMirror=$(echo "$4" |sed 's/\ //g')
     [ -n "$Release" ] || exit 1
     [ -n "$DIST" ] || exit 1
-    [ -n "$VER" ] || exit 1
+    [ -n "$arch" ] || exit 1
     if [ "$Release" == "debian" ]; then
         inUpdate=''
         legacyImages=("images")
@@ -211,7 +216,7 @@ function SelectMirror(){
     do
         for legacyImage in ${legacyImages[@]}
         do
-            netbootURL="${mirror}/dists/${DIST}${inUpdate}/main/installer-${VER}/current/${legacyImage}/netboot/${Release}-installer/${VER}"
+            netbootURL="${mirror}/dists/${DIST}${inUpdate}/main/installer-${arch}/current/${legacyImage}/netboot/${Release}-installer/${arch}"
             wget --no-check-certificate --spider --timeout=3 "$netbootURL/initrd.gz" -o /dev/null
             if [ $? -eq 0 ]; then
                 LinuxMirror=$mirror
@@ -222,20 +227,20 @@ function SelectMirror(){
 }
 
 # get architecture version {{{
-tmpVER="$(echo "$tmpVER" | sed -r 's/(.*)/\L\1/')"  #lowercase
-if  [[ "$tmpVER" == 'i386' ]] || [[ "$tmpVER" == 'amd64' ]] || [[ "$tmpVER" == 'arm64' ]]; then
-    VER=$tmpVER;
+tmpArch="$(echo "$tmpArch" | sed -r 's/(.*)/\L\1/')"  #lowercase
+if  [[ "$tmpArch" == 'i386' ]] || [[ "$tmpArch" == 'amd64' ]] || [[ "$tmpArch" == 'arm64' ]]; then
+    arch=$tmpArch;
 else
-    VER=$(dpkg --print-architecture 2> /dev/null) || {
+    arch=$(dpkg --print-architecture 2> /dev/null) || {
         case $(uname -m) in
             x86_64)
-                VER=amd64
+                arch=amd64
                 ;;
             aarch64)
-                VER=arm64
+                arch=arm64
                 ;;
             i386)
-                VER=i386
+                arch=i386
                 ;;
             *)
                 echo "No --architecture specified"
@@ -271,7 +276,7 @@ fi
 if [ "$tmpMirror" == "china" ]; then
     tmpMirror="https://opentuna.cn/debian"
 fi
-SelectMirror "$Release" "$DIST" "$VER" "$tmpMirror"
+SelectMirror "$Release" "$DIST" "$arch" "$tmpMirror"
 MirrorHost="$(echo "$LinuxMirror" |awk -F'://|/' '{print $2}')"
 MirrorFolder="$(echo "$LinuxMirror" |awk -F''${MirrorHost}'' '{print $2}')"
 
@@ -298,10 +303,10 @@ if [ -d "/boot/efi" ]; then
 fi
 
 # init kernel version {{{
-kernel="linux-image-$VER"
-if [ "$VER" == amd64 ] || [ "$VER" == arm64 ]; then
+kernel="linux-image-$arch"
+if [ "$arch" == amd64 ] || [ "$arch" == arm64 ]; then
     if [ "$isUEFI" == "false" ]; then
-        kernel="linux-image-cloud-$VER"
+        kernel="linux-image-cloud-$arch"
     fi
 fi
 preInstall="$kernel/$DIST $preInstall"
@@ -323,11 +328,7 @@ fi
 echo -e Install ${CYAN}$Release-$DIST-$kernel${NC}, mirror: ${CYAN}$LinuxMirror${NC}, current os: $currentRelease
 
 # password {{{
-if [ -z "$myPASSWORD" ]; then
-    myPASSWORD='$1$P5AU4SN7$WPszMRmeWSTjOWUE/dCsR0'
-else
-    myPASSWORD="$(openssl passwd -1 $myPASSWORD)"
-fi
+my_passwd="$(openssl passwd -1 $my_passwd)"
 
 
 # get network {{{
@@ -427,7 +428,7 @@ if [ "$GRUBVER" -eq 0 ]; then
             echo -e "${RED}Error${NC}: $GRUBFILE have not menuentry."
             exit 1
         fi
-        sed -i "s/menuentry.*/menuentry 'Install OS [$DIST $VER]' --class debian --class gnu-linux --class gnu --class os {/g" $GRUBNEW
+        sed -i "s/menuentry.*/menuentry 'Install OS [$DIST $arch]' --class debian --class gnu-linux --class gnu --class os {/g" $GRUBNEW
         sed -i "/echo.*Loading/d" $GRUBNEW
         INSERTGRUB="$(awk '/menuentry /{print NR}' $GRUBDIR/$GRUBFILE | head -1)"
     else
@@ -439,7 +440,7 @@ if [ "$GRUBVER" -eq 0 ]; then
             echo -e "${RED}Error${NC}: saved_entry ${saved_entry} can't find."
             exit 1
         fi
-        sed -i "s/title .*/title Install OS [$DIST $VER]/g" $GRUBNEW
+        sed -i "s/title .*/title Install OS [$DIST $arch]/g" $GRUBNEW
     fi
 
 elif [ "$GRUBVER" -eq 1 ]; then
@@ -452,7 +453,7 @@ elif [ "$GRUBVER" -eq 1 ]; then
         echo -e "${RED}Error${NC}: $GRUBFILE config failed."
         exit 1
     fi
-    sed -i "/title.*/c\title\ \'Install OS \[$DIST\ $VER\]\'" $GRUBNEW
+    sed -i "/title.*/c\title\ \'Install OS \[$DIST\ $arch\]\'" $GRUBNEW
     sed -i '/^#/d' $GRUBNEW;
     INSERTGRUB="$(awk '/title[\ ]|title[\t]/{print NR}' $GRUBDIR/$GRUBFILE|head -n 1)"
 fi
@@ -514,21 +515,19 @@ chmod 444 $GRUBDIR/$GRUBFILE
 # unpack initrd
 echo -e "${CYAN}unpack initrd${NC}"
 rm -rf /tmp/boot && mkdir /tmp/boot && cd /tmp/boot
+preseed_file=/tmp/boot/preseed.cfg
 gzip -d < /boot/initrd.img | cpio --extract --verbose --make-directories --no-absolute-filenames >>/dev/null 2>&1
 
 
 # preseed.cfg {{{
-if [[ "$Release" == 'debian' ]] || [[ "$Release" == 'ubuntu' ]]; then
-    cat >/tmp/boot/preseed.cfg<<EOF
+cat > $preseed_file << EOF
 d-i debian-installer/locale string en_US
 d-i debian-installer/language string en
 d-i debian-installer/country string US
 d-i debian-installer/locale select en_US.UTF-8
+d-i keyboard-configuration/xkb-keymap select us
 
-d-i keymap select us
-
-d-i netcfg/choose_interface select $interface
-
+d-i netcfg/choose_interface select auto
 d-i netcfg/disable_autoconfig boolean true
 d-i netcfg/dhcp_failed note
 d-i netcfg/dhcp_options select Configure network manually
@@ -540,23 +539,42 @@ d-i netcfg/confirm_static boolean true
 
 d-i netcfg/get_hostname string $(hostname)
 d-i netcfg/get_domain string unassigned-domain
-
 d-i hw-detect/load_firmware boolean true
 
 d-i mirror/country string manual
 d-i mirror/http/hostname string $MirrorHost
 d-i mirror/http/directory string $MirrorFolder
 d-i mirror/http/proxy string
-apt-mirror-setup apt-setup/mirror/error select Retry
+apt-mirror-setup	apt-setup/mirror/error	select	Retry
 
-d-i apt-setup/services-select multiselect security, updates
-d-i apt-setup/security_host string $security_host
 d-i apt-setup/non-free boolean true
 d-i apt-setup/contrib boolean true
+d-i apt-setup/services-select multiselect security, updates
+d-i apt-setup/security_host string $security_host
+d-i apt-setup/local0/source boolean false
+EOF
 
+# check user {{{
+if [ "$user" == "root" ]; then
+    PermitRootLogin=yes
+cat >> $preseed_file << EOF
 d-i passwd/root-login boolean ture
 d-i passwd/make-user boolean false
-d-i passwd/root-password-crypted password $myPASSWORD
+d-i passwd/root-password-crypted password $my_passwd
+d-i user-setup/allow-password-weak boolean true
+EOF
+else
+    PermitRootLogin=no
+cat >> $preseed_file << EOF
+d-i passwd/root-login boolean false
+d-i passwd/make-user boolean true
+d-i passwd/user-fullname string
+d-i passwd/username string $user
+d-i passwd/user-password-crypted password $my_passwd
+EOF
+fi
+
+cat >> $preseed_file << EOF
 d-i user-setup/allow-password-weak boolean true
 d-i user-setup/encrypt-home boolean false
 
@@ -598,13 +616,14 @@ d-i grub-installer/bootdev string default
 d-i grub-installer/force-efi-extra-removable boolean true
 
 d-i preseed/late_command string \
-in-target sed -i '/MaxAuthTries/d' /etc/ssh/sshd_config; \
-in-target bash -c "echo 'MaxAuthTries 10' | tee -a /etc/ssh/sshd_config"; \
-in-target sed -ri 's/^#?PermitRootLogin.*/PermitRootLogin yes/g' /etc/ssh/sshd_config; \
+in-target sed -ri 's/^#?Port.*/Port $ssh_port/g' /etc/ssh/sshd_config; \
+in-target sed -ri 's/^#?MaxAuthTries.*/MaxAuthTries 10/g' /etc/ssh/sshd_config; \
+in-target sed -ri 's/^#?PermitRootLogin.*/PermitRootLogin $PermitRootLogin/g' /etc/ssh/sshd_config; \
 in-target sed -ri 's/^#?PasswordAuthentication.*/PasswordAuthentication yes/g' /etc/ssh/sshd_config;
 
 d-i finish-install/reboot_in_progress note
 EOF
+
 
 if [ "$Release" == "debian" ]; then
     # only for ubuntu
@@ -630,8 +649,6 @@ fi
 if [[ "$Release" == "debian" ]] && [[ -f "/boot/firmware.cpio.gz" ]]; then
     gzip -d < /boot/firmware.cpio.gz | cpio --extract --verbose --make-directories --no-absolute-filenames >>/dev/null 2>&1
 fi
-
-fi  # preseed.cfg }}}
 
 
 echo -e "${CYAN}create new initrd${NC}"

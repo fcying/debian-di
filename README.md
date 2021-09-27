@@ -4,30 +4,8 @@ auto install debian for kvm vps with netboot.
 
 #### Sample
 ```
-# use default options: debian10 amd64 password:HelloDebian
-wget -qOinstall.sh https://github.com/fcying/debian-autoinstall/raw/master/install.sh && bash install.sh
-
-# install debian default version with password:hello123
-bash <(wget -qO- https://github.com/fcying/debian-autoinstall/raw/master/install.sh) -p hello123
-
-# install debian9 i386 password:hello123 huaweimirros
-bash install.sh -d 9 -v 32 -p hello123 -m http://mirrors.huaweicloud.com/debian
-
-# install debian10 use mirror https://opentuna.cn/debian
-bash install.sh -d 10 -m china
-
-# install debian11 with special network
-bash install.sh -d 11 --ip-addr x.x.x.x --ip-gate x.x.x.x --ip-mask x.x.x.x
-
-# install debian 10
-bash install.sh -d buster
-
-# install debian stable
-bash install.sh -d stable
-
-# install ubuntu 20.04
-bash install.sh -u 20.04
-bash install.sh -u focal
+# use default options: debian10 amd64 user:root password:HelloDebian ssh_port:22
+wget -Odi.sh https://github.com/fcying/debian-di/raw/master/di.sh && bash di.sh
 ```
 
 #### Dependence
@@ -44,20 +22,33 @@ debian 11 >= 480M
 ```
 
 #### Options
-```
-./install.sh --help
-Usage:
-    bash install.sh:
-        -d/--debian [9|10|11|value]
-        -u/--ubuntu [18.04|20.04|value]
-        -v/--ver [i386|amd64|arm64]
-        -m/--mirror [value]
-        -p/--password [value]
-        -b/--biosdevname
-        -6/--ipv6
-        -i/--interface [value]
-        --dhcp
-        --ip-addr [value]
-        --ip-gate [value]
-        --ip-mask [value]
-```
+* `--help`
+* `-d/--debian [value]`</br>
+    debian version, default`10`</br>
+    9, 10, 11, ... or bullseye, buster, ...
+* `--ubuntu [value]`</br>
+    18.04, 20.04, ... or bullseye, buster, ...
+* `-a/--arch [value]`</br>
+    architecture version, default`amd64`
+* `-m/--mirror [value]`</br>
+    apt mirror, ex: `-m https://opentuna.cn/debian`</br>
+    or `-m china`, use mirror `https://opentuna.cn/debian`
+* `-u/--user [value]`</br>
+    user name, default: `root`
+* `-p/--password [value]`</br>
+    user password, default:`HelloDebian`
+* `--port [value]`</br>
+    ssh port
+* `-b/--biosdevname`</br>
+    interface use ethx
+* `-6/--ipv6`</br>
+    enable ipv6
+* `--dhcp`</br>
+    use DHCP
+* `--ip-addr [value]`</br>
+    if not set, get current system ip addr
+* `--ip-gate [value]`</br>
+    if not set, get current system ip gate
+* `--ip-mask [value]`</br>
+    if not set, get current system ip mask
+
