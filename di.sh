@@ -1,23 +1,22 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 ## License: GPL
 ## It can reinstall Debian system with network.
 ## Default root password: HelloDebian
 ## Written By fcying
 
-
 tmpArch=''
 tmpDIST='10'
 tmpMirror=''
-ipAddr=''
-ipMask=''
-ipGate=''
+ip_addr=''
+ip_mask=''
+ip_gate=''
 useDHCP=0
 Release='debian'
-setIPv6='0'
-setInterfaceName='0'
+biosdevname=''
+boot_option=' auto=true'
 netbootURL=''
-LinuxMirror=''
+linux_mirror=''
 user='root'
 my_passwd='HelloDebian'
 ssh_port='22'
@@ -78,22 +77,23 @@ while [[ $# -ge 1 ]]; do
             ;;
         --ip-addr)
             shift
-            ipAddr="$1"
+            ip_addr="$1"
             shift
             ;;
         --ip-mask)
             shift
-            ipMask="$1"
+            ip_mask="$1"
             shift
             ;;
         --ip-gate)
             shift
-            ipGate="$1"
+            ip_gate="$1"
             shift
             ;;
         -b|--biosdevname)
             shift
-            setInterfaceName='1'
+            biosdevname='net.ifnames=0 biosdevname=0'
+            boot_option="$boot_option $biosdevname"
             ;;
         -m|--mirror)
             shift
@@ -102,7 +102,7 @@ while [[ $# -ge 1 ]]; do
             ;;
         -6|--ipv6)
             shift
-            setIPv6='1'
+            boot_option="$boot_option ipv6.disable=1"
             ;;
         *)
             if [ "$1" != "--help" ]; then
@@ -219,7 +219,7 @@ function SelectMirror(){
             netbootURL="${mirror}/dists/${DIST}${inUpdate}/main/installer-${arch}/current/${legacyImage}/netboot/${Release}-installer/${arch}"
             wget --no-check-certificate --spider --timeout=3 "$netbootURL/initrd.gz" -o /dev/null
             if [ $? -eq 0 ]; then
-                LinuxMirror=$mirror
+                linux_mirror=$mirror
                 return
             fi
         done
@@ -277,10 +277,10 @@ if [ "$tmpMirror" == "china" ]; then
     tmpMirror="https://opentuna.cn/debian"
 fi
 SelectMirror "$Release" "$DIST" "$arch" "$tmpMirror"
-MirrorHost="$(echo "$LinuxMirror" |awk -F'://|/' '{print $2}')"
-MirrorFolder="$(echo "$LinuxMirror" |awk -F''${MirrorHost}'' '{print $2}')"
+mirror_host="$(echo "$linux_mirror" |awk -F'://|/' '{print $2}')"
+mirror_dir="$(echo "$linux_mirror" |awk -F''${mirror_host}'' '{print $2}')"
 
-if [[ -z "$LinuxMirror" ]]; then
+if [[ -z "$linux_mirror" ]]; then
     echo -e "${RED}Error${NC}: Invaild mirror!"
     [ "$Release" == 'debian' ] && echo -e "${YELLOW}example:${NC} http://deb.debian.org/debian";
     [ "$Release" == 'ubuntu' ] && echo -e "${YELLOW}example:${NC} http://archive.ubuntu.com/ubuntu";
@@ -288,10 +288,10 @@ if [[ -z "$LinuxMirror" ]]; then
 fi
 
 if [ "$Release" == "debian" ]; then
-    if [ "$LinuxMirror" == "http://deb.debian.org/debian" ]; then
+    if [ "$linux_mirror" == "http://deb.debian.org/debian" ]; then
         security_host="security.debian.org"
     else
-        security_host=${MirrorHost}
+        security_host=${mirror_host}
     fi
 else
     security_host="security.ubuntu.com"
@@ -313,7 +313,7 @@ preInstall="$kernel/$DIST $preInstall"
 
 # check DIST valid {{{
 FindDist=0
-DistsList=$(wget --no-check-certificate -qO- $LinuxMirror/dists | grep -Po '(?<=href=").*?(?=/")')
+DistsList=$(wget --no-check-certificate -qO- $linux_mirror/dists | grep -Po '(?<=href=").*?(?=/")')
 for CheckDist in $DistsList
 do
     if [ "$CheckDist" == "$DIST" ]; then
@@ -325,7 +325,7 @@ if [ $FindDist -eq 0 ]; then
     echo -e "${RED}Error${NC}: The dist version not found, Please check it!"
     exit 1;
 fi
-echo -e Install ${CYAN}$Release-$DIST-$kernel${NC}, mirror: ${CYAN}$LinuxMirror${NC}, current os: $currentRelease
+echo -e Install ${CYAN}$Release-$DIST-$kernel${NC}, mirror: ${CYAN}$linux_mirror${NC}, current os: $currentRelease
 
 # password {{{
 my_passwd="$(openssl passwd -1 $my_passwd)"
@@ -333,10 +333,10 @@ my_passwd="$(openssl passwd -1 $my_passwd)"
 
 # get network {{{
 echo -e "${CYAN}get network info${NC}"
-if [ -n "$ipAddr" ] && [ -n "$ipMask" ] && [ -n "$ipGate" ]; then
-    IPv4="$ipAddr"
-    MASK="$ipMask"
-    GATE="$ipGate"
+if [ -n "$ip_addr" ] && [ -n "$ip_mask" ] && [ -n "$ip_gate" ]; then
+    IPv4="$ip_addr"
+    MASK="$ip_mask"
+    GATE="$ip_gate"
 else
     DEFAULTNET="$(ip route | grep -Po '^default via (\d{1,3}\.){1,3}\d{1,3}.*' | head -1 | sed 's/proto.*\|onlink.*//g' | awk '{print $NF}')"
     GATE="$(ip route | grep -Po '(?<=^default via )(\d{1,3}\.){1,3}\d{1,3}' | head -1)"
@@ -469,17 +469,8 @@ if [ -z "$LinuxIMG" ]; then
     LinuxIMG='initrd'
 fi
 
-BOOT_OPTION=" auto=true"
-if [[ "$setInterfaceName" == "1" ]]; then
-    BOOT_OPTION="$BOOT_OPTION net.ifnames=0 biosdevname=0"
-fi
-
-if [[ "$setIPv6" == "0" ]]; then
-    BOOT_OPTION="$BOOT_OPTION ipv6.disable=1"
-fi
-
 if [[ "$Release" == 'debian' ]] || [[ "$Release" == 'ubuntu' ]]; then
-    BOOT_OPTION="$BOOT_OPTION lowmem/low=true -- quiet"
+    boot_option="$boot_option lowmem/low=true -- quiet"
 fi
 
 if [ -n "$(grep 'linux.*/\|kernel.*/' $GRUBNEW | awk '{print $2}' | grep '^/boot/')" ]; then
@@ -488,12 +479,12 @@ else
     inBoot=""
 fi
 
-# add BOOT_OPTION boot failed on centos8
+# add boot_option boot failed on centos8
 if [ "$currentRelease" == "centos" ]; then
-    BOOT_OPTION=""
+    boot_option=""
 fi
 
-sed -i "s|$LinuxKernel.*/.*|$LinuxKernel\t$inBoot/vmlinuz$BOOT_OPTION|g" $GRUBNEW
+sed -i "s|$LinuxKernel.*/.*|$LinuxKernel\t$inBoot/vmlinuz$boot_option|g" $GRUBNEW
 sed -i "s|$LinuxIMG.*/.*|$LinuxIMG\t$inBoot/initrd.img|g" $GRUBNEW
 
 if [ -z "$saved_entry" ]; then
@@ -542,8 +533,8 @@ d-i netcfg/get_domain string unassigned-domain
 d-i hw-detect/load_firmware boolean true
 
 d-i mirror/country string manual
-d-i mirror/http/hostname string $MirrorHost
-d-i mirror/http/directory string $MirrorFolder
+d-i mirror/http/hostname string $mirror_host
+d-i mirror/http/directory string $mirror_dir
 d-i mirror/http/proxy string
 apt-mirror-setup	apt-setup/mirror/error	select	Retry
 
@@ -572,6 +563,11 @@ d-i passwd/user-fullname string
 d-i passwd/username string $user
 d-i passwd/user-password-crypted password $my_passwd
 EOF
+fi
+
+# check biosdevname {{{
+if [ -n "$biosdevname" ]; then
+    echo "d-i debian-installer/add-kernel-opts string $biosdevname" >> $preseed_file
 fi
 
 cat >> $preseed_file << EOF

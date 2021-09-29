@@ -24,23 +24,24 @@ debian 11 >= 480M
 #### Options
 * `--help`
 * `-d/--debian [value]`</br>
-    debian version, default`10`</br>
-    9, 10, 11, ... or bullseye, buster, ...
+    9, 10, 11, ... or bullseye, buster, ...</br>
+    debian version, default`10`
 * `--ubuntu [value]`</br>
     18.04, 20.04, ... or bullseye, buster, ...
 * `-a/--arch [value]`</br>
-    architecture version, default`amd64`
+    architecture version: `amd64` `i386` `arm64`</br>
+    default`amd64`
 * `-m/--mirror [value]`</br>
     apt mirror, ex: `-m https://opentuna.cn/debian`</br>
     or `-m china`, use mirror `https://opentuna.cn/debian`
 * `-u/--user [value]`</br>
-    user name, default: `root`
+    user name, default:`root`
 * `-p/--password [value]`</br>
     user password, default:`HelloDebian`
 * `--port [value]`</br>
     ssh port
 * `-b/--biosdevname`</br>
-    interface use ethx
+    interface name use `ethx`
 * `-6/--ipv6`</br>
     enable ipv6
 * `--dhcp`</br>
