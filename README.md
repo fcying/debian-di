@@ -34,6 +34,8 @@ debian 11 >= 480M
 * `-m/--mirror [value]`</br>
     apt mirror, ex: `-m https://opentuna.cn/debian`</br>
     or `-m china`, use mirror `https://opentuna.cn/debian`
+* `--dns [value]`</br>
+    default`8.8.8.8`
 * `-u/--user [value]`</br>
     user name, default:`root`
 * `-p/--password [value]`</br>
@@ -41,11 +43,14 @@ debian 11 >= 480M
 * `--port [value]`</br>
     ssh port
 * `-b/--biosdevname`</br>
-    interface name use `ethx`
+    interface name not use `ethx`
+* `--hostname`</br>
+    default use `$(hostname)`
 * `-6/--ipv6`</br>
     enable ipv6
-* `--dhcp`</br>
-    use DHCP
+* `--dhcp [value]`</br>
+    1: use DHCP    0: static ip from current system
+    default `1`
 * `--ip-addr [value]`</br>
     if not set, get current system ip addr
 * `--ip-gate [value]`</br>

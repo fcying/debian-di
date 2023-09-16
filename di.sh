@@ -11,15 +11,17 @@ tmpMirror=''
 ip_addr=''
 ip_mask=''
 ip_gate=''
-useDHCP=0
+useDHCP=1
 Release='debian'
-biosdevname=''
+biosdevname='net.ifnames=0 biosdevname=0'
 boot_option=' auto=true'
 netbootURL=''
 linux_mirror=''
 user='root'
 my_passwd='HelloDebian'
 ssh_port='22'
+DNS="8.8.8.8"
+HOSTNAME=$(hostname)
 
 # debconf-get-selections --installer >> file
 # debconf-get-selections >> file
@@ -36,6 +38,10 @@ CYAN="\e[0;36m"
 WHITE="\e[0;37m"
 NC="\e[0m"  # No Color
 
+function logd()     { echo -e "$@"; }
+function logi()     { echo -e "${BLUE}$@${NC}"; }
+function logw()     { echo -e "${YELLOW}$@${NC}"; }
+function loge()     { echo -e "${RED}$@${NC}"; }
 
 while [[ $# -ge 1 ]]; do
     case $1 in
@@ -72,7 +78,8 @@ while [[ $# -ge 1 ]]; do
             shift
             ;;
         --dhcp)
-            useDHCP=1
+            shift
+            useDHCP="$1"
             shift
             ;;
         --ip-addr)
@@ -92,12 +99,21 @@ while [[ $# -ge 1 ]]; do
             ;;
         -b|--biosdevname)
             shift
-            biosdevname='net.ifnames=0 biosdevname=0'
-            boot_option="$boot_option $biosdevname"
+            biosdevname=''
+            ;;
+        --hostname)
+            shift
+            HOSTNAME="$1"
+            shift
             ;;
         -m|--mirror)
             shift
             tmpMirror="$1"
+            shift
+            ;;
+        --dns)
+            shift
+            DNS="$1"
             shift
             ;;
         -6|--ipv6)
@@ -106,7 +122,7 @@ while [[ $# -ge 1 ]]; do
             ;;
         *)
             if [ "$1" != "--help" ]; then
-                echo -e "Invaild option: '$1'"
+                loge "Invaild option: '$1'"
             fi
             echo -e "Usage:"
             echo -e "    bash $(basename $0):"
@@ -114,10 +130,12 @@ while [[ $# -ge 1 ]]; do
             echo -e "        --ubuntu [18.04|20.04|value]"
             echo -e "        -v/--ver [i386|amd64|arm64]"
             echo -e "        -m/--mirror [value]"
+            echo -e "        --dns [value]"
             echo -e "        -u/--user [value]"
             echo -e "        -p/--password [value]"
             echo -e "        --port [value]"
             echo -e "        -b/--biosdevname"
+            echo -e "        --hostname"
             echo -e "        -6/--ipv6"
             echo -e "        --dhcp"
             echo -e "        --ip-addr [value]"
@@ -128,7 +146,11 @@ while [[ $# -ge 1 ]]; do
     esac
 done
 
-[ "$EUID" -ne '0' ] && echo -e "${RED}Error${NC}: This script must be run as root!" && exit 1
+[ "$EUID" -ne '0' ] && loge "This script must be run as root!" && exit 1
+
+if [ -n "$biosdevname" ]; then
+    boot_option="$boot_option $biosdevname"
+fi
 
 function CheckDependenceBin(){
     ret=0
@@ -146,7 +168,7 @@ function CheckDependenceBin(){
         fi
     done
     if [ $ret -ne 0 ]; then
-        echo -e "${RED}Error${NC}: Please install dependence bin."
+        loge "Please install dependence bin."
         exit 1
     fi
 }
@@ -165,7 +187,7 @@ function CheckDependenceLib(){
         fi
     done
     if [ $ret -ne 0 ]; then
-        echo -e "${RED}Error${NC}: Please install dependence lib."
+        loge "Please install dependence lib."
         exit 1
     fi
 }
@@ -183,7 +205,7 @@ else
     currentRelease="other"
 fi
 
-echo -e "${CYAN}# Check Dependence${NC}"
+logi "# Check Dependence"
 CheckDependenceBin wget,awk,grep,sed,cut,cat,cpio,gzip,find,dirname,basename
 # for grep -P
 if [[ "$currentRelease" == 'debian' ]] || [[ "$currentRelease" == 'ubuntu' ]]; then
@@ -243,7 +265,7 @@ else
                 arch=i386
                 ;;
             *)
-                echo "No --architecture specified"
+                loge "No --architecture specified"
         esac
     }
 fi
@@ -281,9 +303,9 @@ mirror_host="$(echo "$linux_mirror" |awk -F'://|/' '{print $2}')"
 mirror_dir="$(echo "$linux_mirror" |awk -F''${mirror_host}'' '{print $2}')"
 
 if [[ -z "$linux_mirror" ]]; then
-    echo -e "${RED}Error${NC}: Invaild mirror!"
-    [ "$Release" == 'debian' ] && echo -e "${YELLOW}example:${NC} http://deb.debian.org/debian";
-    [ "$Release" == 'ubuntu' ] && echo -e "${YELLOW}example:${NC} http://archive.ubuntu.com/ubuntu";
+    loge "Invaild mirror!"
+    [ "$Release" == 'debian' ] && logi "example: http://deb.debian.org/debian";
+    [ "$Release" == 'ubuntu' ] && logi "example: http://archive.ubuntu.com/ubuntu";
     exit 1;
 fi
 
@@ -322,17 +344,17 @@ do
     fi
 done
 if [ $FindDist -eq 0 ]; then
-    echo -e "${RED}Error${NC}: The dist version not found, Please check it!"
+    loge "The dist version not found, Please check it!"
     exit 1;
 fi
-echo -e Install ${CYAN}$Release-$DIST-$kernel${NC}, mirror: ${CYAN}$linux_mirror${NC}, current os: $currentRelease
+logi Install $Release-$DIST-$kernel, mirror: $linux_mirror, current os: $currentRelease
 
 # password {{{
 my_passwd="$(openssl passwd -1 $my_passwd)"
 
 
 # get network {{{
-echo -e "${CYAN}get network info${NC}"
+logi "get network info"
 if [ -n "$ip_addr" ] && [ -n "$ip_mask" ] && [ -n "$ip_gate" ]; then
     IPv4="$ip_addr"
     MASK="$ip_mask"
@@ -356,29 +378,29 @@ else
     fi
 fi
 
-echo -e IPv4: $IPv4, NETMASK: $MASK, GATEWAY: $GATE
+logi hostname:$HOSTNAME, IPv4: $IPv4, DNS: $DNS, NETMASK: $MASK, GATEWAY: $GATE
 if [ -z "$GATE" ] || [ -z "$MASK" ] || [ -z "$IPv4" ]; then
-    echo -e "${RED}Error${NC}: Not configure network."
+    loge "Not configure network."
     exit 1
 fi
 
 
 # check memory {{{
 memory=$(free -k | grep Mem | awk '{print $2}')
-echo -e "memory is $memory (free -k)"
+logi "memory is $memory (free -k)"
 if [ "$DIST" == "buster" ]; then
     if [ "$memory" -lt 299684 ]; then
-        echo -e "low memory: $memory, need 299684 at least"
+        loge "low memory: $memory, need 299684 at least"
         exit 1
     fi
 elif [ "$DIST" == "stretch" ]; then
     if [ "$memory" -lt 170660 ]; then
-        echo -e "low memory: $memory, need 170660 at least"
+        loge "low memory: $memory, need 170660 at least"
         exit 1
     fi
 elif [ "$DIST" == "bullseye" ]; then
     if [ "$memory" -lt 461476 ]; then
-        echo -e "low memory: $memory, need 461476 at least"
+        loge "low memory: $memory, need 461476 at least"
         exit 1
     fi
 fi
@@ -387,26 +409,26 @@ fi
 # download boot file {{{
 TEST=${TEST:-"0"}
 if [[ "$Release" == "debian" ]] || [[ "$Release" == "ubuntu" ]]; then
-    echo -e "download ${CYAN}initrd.gz vmlinuz${NC} from ${CYAN}$netbootURL${NC}"
+    logi "download initrd.gz vmlinuz from $netbootURL"
     if [ "$TEST" == "0" ]; then
         wget --no-check-certificate -qO "/boot/vmlinuz" $netbootURL/linux
         if [ $? -ne 0 ]; then
-            echo -e "${RED}Error${NC}: Download 'vmlinuz' failed!" && exit 1
+            loge "Download 'vmlinuz' failed!" && exit 1
         fi
 
         wget --no-check-certificate -qO "/boot/initrd.img" $netbootURL/initrd.gz
         if [ $? -ne 0 ]; then
-            echo -e "${RED}Error${NC}: Download 'initrd.img' failed!" && exit 1
+            loge "Download 'initrd.img' failed!" && exit 1
         fi
     fi
 else
-    echo -e "${RED}Error${NC}: Invalid version $Release."
+    loge "Invalid version $Release."
     exit 1
 fi
 
 
 # modify grub {{{
-echo -e "${CYAN}set new grub${NC}"
+logi "set new grub"
 if [ -f "/boot/grub/grub.cfg" ]; then
     GRUBVER=0 && GRUBDIR='/boot/grub' && GRUBFILE='grub.cfg'
 elif [ -f "/boot/grub2/grub.cfg" ]; then
@@ -414,7 +436,7 @@ elif [ -f "/boot/grub2/grub.cfg" ]; then
 elif [ -f "/boot/grub/grub.conf" ]; then
     GRUBVER=1 && GRUBDIR='/boot/grub' && GRUBFILE='grub.conf'
 else
-    echo -e "${RED}Error${NC}: grub not found."
+    loge "grub not found."
     exit 1
 fi
 
@@ -425,7 +447,7 @@ if [ "$GRUBVER" -eq 0 ]; then
         # get menuentry
         cat $GRUBDIR/$GRUBFILE | sed -n ':a;N;$!ba;s/\n/%%%%%/g;$p' | grep -Po 'menuentry\ .*?}%%%%%' | head -1 | sed 's/%%%%%/\n/g' >$GRUBNEW
         if [ ! -f $GRUBNEW ]; then
-            echo -e "${RED}Error${NC}: $GRUBFILE have not menuentry."
+            loge "$GRUBFILE have not menuentry."
             exit 1
         fi
         sed -i "s/menuentry.*/menuentry 'Install OS [$DIST $arch]' --class debian --class gnu-linux --class gnu --class os {/g" $GRUBNEW
@@ -437,7 +459,7 @@ if [ "$GRUBVER" -eq 0 ]; then
         if [ -f "/boot/loader/entries/${saved_entry}.conf" ]; then
             cat "/boot/loader/entries/${saved_entry}.conf" > $GRUBNEW
         else
-            echo -e "${RED}Error${NC}: saved_entry ${saved_entry} can't find."
+            loge "saved_entry ${saved_entry} can't find."
             exit 1
         fi
         sed -i "s/title .*/title Install OS [$DIST $arch]/g" $GRUBNEW
@@ -450,7 +472,7 @@ elif [ "$GRUBVER" -eq 1 ]; then
     [[ -n $CFG0 ]] && [ -z $CFG1 -o $CFG1 == $CFG0 ] && sed -n "$CFG0,$"p $GRUBDIR/$GRUBFILE >$GRUBNEW
     [[ -n $CFG0 ]] && [ -z $CFG1 -o $CFG1 != $CFG0 ] && sed -n "$CFG0,$[$CFG1-1]"p $GRUBDIR/$GRUBFILE >$GRUBNEW
     if [ ! -f $GRUBNEW ]; then
-        echo -e "${RED}Error${NC}: $GRUBFILE config failed."
+        loge "$GRUBFILE config failed."
         exit 1
     fi
     sed -i "/title.*/c\title\ \'Install OS \[$DIST\ $arch\]\'" $GRUBNEW
@@ -460,7 +482,7 @@ fi
 
 LinuxKernel="$(grep 'linux.*/\|kernel.*/' $GRUBNEW |awk '{print $1}')"
 if [ -z "$LinuxKernel" ]; then
-    echo -e "${RED}Error${NC}: can't find LinuxKernel."
+    loge "can't find LinuxKernel."
     exit 1
 fi
 LinuxIMG="$(grep 'initrd.*/' $GRUBNEW |awk '{print $1}')";
@@ -504,7 +526,7 @@ chmod 444 $GRUBDIR/$GRUBFILE
 
 
 # unpack initrd
-echo -e "${CYAN}unpack initrd${NC}"
+logi "unpack initrd"
 rm -rf /tmp/boot && mkdir /tmp/boot && cd /tmp/boot
 preseed_file=/tmp/boot/preseed.cfg
 gzip -d < /boot/initrd.img | cpio --extract --verbose --make-directories --no-absolute-filenames >>/dev/null 2>&1
@@ -525,10 +547,10 @@ d-i netcfg/dhcp_options select Configure network manually
 d-i netcfg/get_ipaddress string $IPv4
 d-i netcfg/get_netmask string $MASK
 d-i netcfg/get_gateway string $GATE
-d-i netcfg/get_nameservers string 8.8.8.8
+d-i netcfg/get_nameservers string $DNS
 d-i netcfg/confirm_static boolean true
 
-d-i netcfg/get_hostname string $(hostname)
+d-i netcfg/get_hostname string $HOSTNAME
 d-i netcfg/get_domain string unassigned-domain
 d-i hw-detect/load_firmware boolean true
 
@@ -615,7 +637,9 @@ d-i preseed/late_command string \
 in-target sed -ri 's/^#?Port.*/Port $ssh_port/g' /etc/ssh/sshd_config; \
 in-target sed -ri 's/^#?MaxAuthTries.*/MaxAuthTries 10/g' /etc/ssh/sshd_config; \
 in-target sed -ri 's/^#?PermitRootLogin.*/PermitRootLogin $PermitRootLogin/g' /etc/ssh/sshd_config; \
-in-target sed -ri 's/^#?PasswordAuthentication.*/PasswordAuthentication yes/g' /etc/ssh/sshd_config;
+in-target sed -ri 's/^#?PasswordAuthentication.*/PasswordAuthentication yes/g' /etc/ssh/sshd_config; \
+in-target sed -ri 's/GRUB_TIMEOUT=5/GRUB_TIMEOUT=2/' /etc/default/grub; \
+in-target update-grub;
 
 d-i finish-install/reboot_in_progress note
 EOF
@@ -647,12 +671,12 @@ if [[ "$Release" == "debian" ]] && [[ -f "/boot/firmware.cpio.gz" ]]; then
 fi
 
 
-echo -e "${CYAN}create new initrd${NC}"
+logi "create new initrd"
 rm -f /boot/initrd.img
 find . | cpio -H newc --create | gzip -9 > /boot/initrd.img
 rm -rf /tmp/boot
 
 
-echo -e "${CYAN}reboot && enter auto install, wait a moment, you can check process with VNC.${NC}"
+logi "reboot && enter auto install, wait a moment, you can check process with VNC."
 sleep 3
 reboot
