@@ -14,20 +14,18 @@ apt-get update
 apt-get install -y wget gawk cpio libpcre3 openssl ca-certificates
 ```
 
-#### Min Memory Requirement
+#### Min Memory Requirement (free -m)
 ```
-debian 9 >= 192M
-debian 10 >= 320M
-debian 11 >= 480M
+debian 10 >= 285M
+debian 11 >= 440M
+debian 12 >= 440M
 ```
 
 #### Options
 * `--help`
 * `-d/--debian [value]`</br>
-    9, 10, 11, ... or bullseye, buster, ...</br>
+    10 or strtch</br>
     debian version, default`10`
-* `--ubuntu [value]`</br>
-    18.04, 20.04, ... or bullseye, buster, ...
 * `-a/--arch [value]`</br>
     architecture version: `amd64` `i386` `arm64`</br>
     default`amd64`

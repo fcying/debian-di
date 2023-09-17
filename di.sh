@@ -25,7 +25,7 @@ HOSTNAME=$(hostname)
 
 # debconf-get-selections --installer >> file
 # debconf-get-selections >> file
-preInstall='openssh-server wget curl vim git debconf-utils locales-all'
+preInstall='openssh-server wget curl vim git debconf-utils locales-all libpcre3'
 isUEFI='false'
 
 BLACK="\e[0;30m"
@@ -177,7 +177,7 @@ function CheckDependenceLib(){
     for LIB_DEP in `echo "$1" | sed 's/,/\n/g'`
     do
         if [ -n "$LIB_DEP" ]; then
-            if [ $(ldconfig -p | grep -c $LIB_DEP) -eq 0 ]; then
+            if [ "$(ldconfig -p | grep -c $LIB_DEP)" -eq "0" ]; then
                 ret=1;
                 echo -en "[${GREEN}Not Install${NC}]"
             else
@@ -206,7 +206,7 @@ else
 fi
 
 logi "# Check Dependence"
-CheckDependenceBin wget,awk,grep,sed,cut,cat,cpio,gzip,find,dirname,basename
+CheckDependenceBin wget,curl,awk,grep,sed,cut,cat,cpio,gzip,find,dirname,basename
 # for grep -P
 if [[ "$currentRelease" == 'debian' ]] || [[ "$currentRelease" == 'ubuntu' ]]; then
     CheckDependenceLib libpcre.so.3
@@ -278,14 +278,9 @@ fi
 # check dist {{{
 DIST_NUM="$(echo "$tmpDIST" | sed -r 's/(.*)/\L\1/')"
 if [ "$Release" == "debian" ]; then
-    if [ "$DIST_NUM" == "10" ]; then
-        DIST="buster"
-    elif [ "$DIST_NUM" == "8" ]; then
-        DIST="jessie"
-    elif [ "$DIST_NUM" == "9" ]; then
-        DIST="stretch"
-    elif [ "$DIST_NUM" == "11" ]; then
-        DIST="bullseye"
+    DIST=$(curl -s https://www.debian.org/releases/ | grep -P "a href.*Debian $DIST_NUM.*<q>.*</q>" | grep -Po "(?<=<q>).*(?=</q>)")
+    if [ -z "DIST" ]; then
+        loge "unsupport version $DIST_NUM $DIST"
     fi
 elif [ "$Release" == "ubuntu" ]; then
     if [ "$DIST_NUM" == "18.04" ]; then
@@ -343,7 +338,7 @@ do
         break
     fi
 done
-if [ $FindDist -eq 0 ]; then
+if [ "$FindDist" -eq "0" ]; then
     loge "The dist version not found, Please check it!"
     exit 1;
 fi
@@ -378,7 +373,7 @@ else
     fi
 fi
 
-logi hostname:$HOSTNAME, IPv4: $IPv4, DNS: $DNS, NETMASK: $MASK, GATEWAY: $GATE
+logi hostname:$HOSTNAME, DHCP: $useDHCP, IPv4: $IPv4, DNS: $DNS, NETMASK: $MASK, GATEWAY: $GATE
 if [ -z "$GATE" ] || [ -z "$MASK" ] || [ -z "$IPv4" ]; then
     loge "Not configure network."
     exit 1
@@ -386,22 +381,21 @@ fi
 
 
 # check memory {{{
-memory=$(free -k | grep Mem | awk '{print $2}')
-logi "memory is $memory (free -k)"
-if [ "$DIST" == "buster" ]; then
-    if [ "$memory" -lt 299684 ]; then
-        loge "low memory: $memory, need 299684 at least"
-        exit 1
-    fi
-elif [ "$DIST" == "stretch" ]; then
-    if [ "$memory" -lt 170660 ]; then
-        loge "low memory: $memory, need 170660 at least"
-        exit 1
-    fi
-elif [ "$DIST" == "bullseye" ]; then
-    if [ "$memory" -lt 461476 ]; then
-        loge "low memory: $memory, need 461476 at least"
-        exit 1
+memory=$(free -m | grep Mem | awk '{print $2}')
+if [ "$Release" == "debian" ]; then
+    logi "memory is ${memory}m (free -m)"
+    if [ "$DIST_NUM" == "10" ]; then
+        # proxmox 310 MiB
+        if [ "$memory" -lt 285 ]; then
+            loge "low memory: ${memory}m, need 285m at least"
+            exit 1
+        fi
+    elif [ "$DIST_NUM" -ge "11" ]; then
+        # proxmox 480 MiB
+        if [ "$memory" -lt 440 ]; then
+            loge "low memory: ${memory}m, need 440m at least"
+            exit 1
+        fi
     fi
 fi
 
@@ -442,7 +436,7 @@ fi
 
 saved_entry=""
 GRUBNEW='/tmp/grub.new'
-if [ "$GRUBVER" -eq 0 ]; then
+if [ "$GRUBVER" -eq "0" ]; then
     if [ "$(grep -Pc 'menuentry\ .*?{' $GRUBDIR/$GRUBFILE)" -ne 0 ]; then
         # get menuentry
         cat $GRUBDIR/$GRUBFILE | sed -n ':a;N;$!ba;s/\n/%%%%%/g;$p' | grep -Po 'menuentry\ .*?}%%%%%' | head -1 | sed 's/%%%%%/\n/g' >$GRUBNEW
@@ -465,7 +459,7 @@ if [ "$GRUBVER" -eq 0 ]; then
         sed -i "s/title .*/title Install OS [$DIST $arch]/g" $GRUBNEW
     fi
 
-elif [ "$GRUBVER" -eq 1 ]; then
+elif [ "$GRUBVER" -eq "1" ]; then
     # for centos 6
     CFG0="$(awk '/title[\ ]|title[\t]/{print NR}' $GRUBDIR/$GRUBFILE|head -n 1)"
     CFG1="$(awk '/title[\ ]|title[\t]/{print NR}' $GRUBDIR/$GRUBFILE|head -n 2 |tail -n 1)"
@@ -656,7 +650,7 @@ if [ "$isUEFI" == "false" ]; then
     sed -i '/force-efi-extra-removable/d' /tmp/boot/preseed.cfg
 fi
 
-if [ "$useDHCP" -eq 1 ]; then
+if [ "$useDHCP" -eq "1" ]; then
     sed -i '/netcfg\/disable_autoconfig/d' /tmp/boot/preseed.cfg
     sed -i '/netcfg\/dhcp_options/d' /tmp/boot/preseed.cfg
     sed -i '/netcfg\/get_ipaddress.*/d' /tmp/boot/preseed.cfg
