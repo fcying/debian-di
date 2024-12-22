@@ -278,8 +278,15 @@ fi
 # check dist {{{
 DIST_NUM="$(echo "$tmpDIST" | sed -r 's/(.*)/\L\1/')"
 if [ "$Release" == "debian" ]; then
-    DIST=$(curl -s https://www.debian.org/releases/ | grep -P "a href.*Debian $DIST_NUM.*<q>.*</q>" | grep -Po "(?<=<q>).*(?=</q>)")
-    if [ -z "DIST" ]; then
+    if [ "$DIST_NUM" == "10" ]; then
+        DIST="Buster"
+    elif [ "$DIST_NUM" == "11" ]; then
+        DIST="Bullseye"
+    elif [ "$DIST_NUM" == "12" ]; then
+        DIST="Bookworm"
+    elif [ "$DIST_NUM" == "13" ]; then
+        DIST="Trixie"
+    else
         loge "unsupport version $DIST_NUM $DIST"
     fi
 elif [ "$Release" == "ubuntu" ]; then
